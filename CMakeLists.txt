@@ -14,3 +14,6 @@ if (OPENMP_FOUND)
 endif ()
 
 add_subdirectory("ptl")
+
+add_subdirectory("tests")
+#add_subdirectory("thirdparty")
