@@ -1,1 +1,138 @@
 #pragma once
+
+#include <execution>
+#include <future>
+#include <memory>
+
+namespace ptl
+{
+template <typename T, typename Allocator = std::allocator<T>> class vector
+{
+  protected:
+    using size_type = size_t;
+
+    T *m_array = nullptr;
+    size_type m_count = 0;
+    size_type m_capacity = 0;
+
+  public:
+    constexpr vector() = default;
+
+    constexpr explicit vector(size_type count)
+    {
+        this->m_array = Allocator().allocate(count);
+        this->m_count = count;
+        this->m_capacity = count;
+    }
+
+    constexpr vector(const vector &other)
+    {
+        this->m_array = Allocator().allocate(other.m_count);
+        std::copy(std::execution::par, other.m_array, other.m_array + other.m_count, this->m_array);
+        this->m_count = m_count;
+        this->m_capacity = m_count;
+    }
+
+    constexpr ~vector()
+    {
+        if (this->m_array != nullptr)
+        {
+            Allocator().deallocate(this->m_array, this->m_count);
+        }
+    }
+
+    constexpr vector &operator=(const vector<T> &right)
+    {
+        if (this == &right)
+        {
+            return *this;
+        }
+        auto temp_data = Allocator().allocate(right.m_count);
+        std::copy(std::execution::par, right.m_array, right.m_array + right.m_count, temp_data);
+        Allocator().deallocate(this->m_array, this->m_count);
+        this->m_array = temp_data;
+        this->m_count = right.m_count;
+        this->m_capacity = right.m_count;
+        return *this;
+    }
+
+    // Element access
+    constexpr T &operator[](size_type index)
+    {
+        return this->m_array[index];
+    }
+
+    constexpr const T &operator[](size_type index) const
+    {
+        return this->m_array[index];
+    }
+
+    // Capacity
+    [[nodiscard]] bool empty() const
+    {
+        return this->m_count == 0;
+    }
+
+    [[nodiscard]] size_type size() const
+    {
+        return this->m_count;
+    }
+
+    [[nodiscard]] size_type capacity() const noexcept
+    {
+        return this->m_capacity;
+    }
+
+    // Modifiers
+    constexpr void push_back(const T &value)
+    {
+        if (this->m_count == this->m_capacity)
+        {
+            auto temp_data = Allocator().allocate(this->m_capacity + 1);
+            std::copy(std::execution::par, this->m_array, this->m_array + this->m_count, temp_data);
+            Allocator().deallocate(this->m_array, this->m_count);
+            this->m_array = temp_data;
+            this->m_capacity++;
+        }
+        this->m_array[this->m_count] = value;
+        this->m_count++;
+    }
+
+    std::future<void> push_back_async(const T &value)
+    {
+        return std::async(&vector::push_back, this, value);
+    }
+
+    constexpr void pop_back()
+    {
+        if (this->m_count == 0) // NOTE: Calling pop_back on an empty container results in undefined behavior.
+        {
+            return;
+        }
+        this->m_array[this->m_count - 1].~T();
+        this->m_count--;
+    }
+
+    constexpr void resize(size_type count)
+    {
+        if (count == this->m_capacity)
+        {
+            return;
+        }
+        else
+        {
+            auto temp_data = Allocator().allocate(count);
+            std::copy(std::execution::par, this->m_array, this->m_array + count, temp_data);
+            Allocator().deallocate(this->m_array, this->m_count);
+            this->m_array = temp_data;
+            this->m_capacity = count;
+            if (count < this->m_count)
+            {
+                this->m_count = count;
+            }
+        }
+    }
+};
+// Non-member functions
+// template <typename T> std::strong_ordering operator<=>(T left, T right);
+} // namespace ptl
