@@ -4,9 +4,11 @@
 #include <future>
 #include <memory>
 
+#include "allocator"
+
 namespace ptl
 {
-template <typename T, typename Allocator = std::allocator<T>> class vector
+template <typename T, typename Allocator = ptl::allocator<T>> class vector
 {
   protected:
     using size_type = size_t;
@@ -122,7 +124,7 @@ template <typename T, typename Allocator = std::allocator<T>> class vector
         else
         {
             auto temp_data = Allocator().allocate(count);
-            std::copy(std::execution::par, this->m_array, this->m_array + count, temp_data);
+            std::copy(std::execution::par, this->m_array, this->m_array + this->m_count, temp_data);
             Allocator().deallocate(this->m_array, this->m_count);
             this->m_array = temp_data;
             this->m_capacity = count;
