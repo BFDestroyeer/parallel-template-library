@@ -21,7 +21,7 @@ TEST(TEST_VECTOR, CONSTRUCTOR_COPY)
 
     ptl::vector<int32_t> vector_b(vector_a);
 
-    // ASSERT_EQ(vector_a, vector_b);
+    ASSERT_EQ(vector_a, vector_b);
 }
 
 TEST(TEST_VECTOR, OPERATOR_EQUATING)
@@ -33,7 +33,7 @@ TEST(TEST_VECTOR, OPERATOR_EQUATING)
 
     vector_a = vector_b;
 
-    // ASSERT_EQ(vector_a, vector_b);
+    ASSERT_EQ(vector_a, vector_b);
 }
 
 TEST(TEST_VECTOR, OPERATOR_SQUARE_BRAKETS)
@@ -102,7 +102,7 @@ TEST(TEST_VECTOR, METHOD_POP_BACK)
 
 TEST(TEST_VECTOR, METHOD_RESIZE)
 {
-    ptl::vector<int32_t> vector_a(5);
+    ptl::vector<std::string> vector_a(5);
 
     vector_a.resize(10);
 
