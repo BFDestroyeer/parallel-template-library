@@ -1,0 +1,17 @@
+#pragma once
+
+#include <cstddef>
+
+namespace ptl
+{
+
+template <typename T> T *copy(T *input_first, T *input_last, T *destination_first)
+{
+#pragma omp parallel for default(none) shared(input_first, input_last, destination_first)
+    for (ptrdiff_t i = 0; i < input_last - input_first; i++)
+    {
+        destination_first[i] = input_first[i];
+    }
+    return destination_first + (input_last - input_first);
+}
+} // namespace ptl

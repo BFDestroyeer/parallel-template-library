@@ -1,0 +1,18 @@
+#pragma once
+
+namespace ptl
+{
+template <typename T> class allocator
+{
+  public:
+    [[nodiscard]] constexpr T *allocate(size_t count)
+    {
+        return new T[count];
+    }
+
+    constexpr void deallocate(T *pointer, std::size_t count)
+    {
+        delete[] pointer;
+    }
+};
+} // namespace ptl
