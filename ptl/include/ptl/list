@@ -1,0 +1,145 @@
+#pragma once
+
+#include <future>
+
+#include "ptl/allocator"
+
+namespace ptl
+{
+template <typename T, typename Allocator = ptl::allocator<T>> class list
+{
+  protected:
+    class Node
+    {
+      public:
+        T m_value;
+
+        Node *p_previous = nullptr;
+        Node *p_next = nullptr;
+
+        Node() = default;
+
+        explicit Node(const T &value, Node *previous = nullptr, Node *next = nullptr)
+        {
+            this->m_value = value;
+            this->p_previous = previous;
+            this->p_next = next;
+        }
+
+        ~Node()
+        {
+            m_value.~T();
+        }
+    };
+
+    using size_type = size_t;
+
+    size_type m_count = 0;
+
+    Node *p_first = nullptr;
+    Node *p_last = nullptr;
+
+  public:
+    explicit list() = default;
+
+    explicit list(size_type count)
+    {
+        if (count == 0)
+        {
+            return;
+        }
+        this->p_first = new Node();
+        Node *previous_node = this->p_first;
+        for (size_type i = 1; i < count; i++)
+        {
+            auto node = new Node();
+            previous_node->p_next = node;
+            node->p_previous = previous_node;
+            previous_node = node;
+        }
+        this->p_last = previous_node;
+        this->m_count = count;
+    }
+
+    // Capacity
+    [[nodiscard]] bool empty() const noexcept
+    {
+        return this->m_count == 0;
+    }
+
+    [[nodiscard]] size_type size() const noexcept
+    {
+        return this->m_count;
+    }
+
+    // Modifiers
+    void clear() noexcept
+    {
+        Node *current_node = this->p_first;
+        while (current_node != nullptr)
+        {
+            Node *next_node = current_node->p_next;
+            delete current_node;
+            current_node = next_node;
+        }
+        this->m_count = 0;
+    }
+
+    std::future<void> clear_async()
+    {
+        return std::async(&list::clear, this);
+    }
+
+    void push_back(const T &value)
+    {
+        if (this->m_count != 0)
+        {
+            auto node = new Node(value, this->p_last);
+            this->p_last->p_next = node;
+            node->p_previous = this->p_last;
+            this->p_last = node;
+        }
+        else
+        {
+            auto node = new Node(value);
+            this->p_first = node;
+            this->p_last = node;
+        }
+        this->m_count++;
+    }
+
+    // Operations
+    size_type unique()
+    {
+        return this->unique(std::equal_to<>());
+    }
+
+    template <typename BinaryPredicate> size_type unique(BinaryPredicate predicate)
+    {
+        size_type old_count = this->m_count;
+        if (this->m_count == 0)
+        {
+            return 0;
+        }
+        Node *current_node = this->p_first;
+        Node *next_node;
+        while (current_node->p_next != nullptr)
+        {
+            next_node = current_node->p_next;
+            if (predicate(current_node->m_value, next_node->m_value))
+            {
+                current_node->p_next = next_node->p_next;
+                next_node->p_previous = current_node;
+                delete next_node;
+                this->m_count--;
+            }
+            else
+            {
+                current_node = current_node->p_next;
+            }
+        }
+        this->p_last = current_node;
+        return old_count - this->m_count;
+    }
+};
+} // namespace ptl

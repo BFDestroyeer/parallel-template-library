@@ -124,7 +124,13 @@ TEST(BENCHMARK_VECTOR, METHOD_PUSH_BACK_SYNC)
     vector_c.push_back(10);
     auto end = omp_get_wtime();
 
-    std::cout << "METHOD_PUSH_BACK_SYNC " << end - begin << std::endl;
+    std::cout << "BENCHMARK_VECTOR"
+              << ":"
+              << "METHOD_PUSH_BACK_SYNC"
+              << " " << end - begin << std::endl;
+    ASSERT_EQ(vector_a[1024 * 1024 * 64], 10);
+    ASSERT_EQ(vector_b[1024 * 1024 * 64], 10);
+    ASSERT_EQ(vector_c[1024 * 1024 * 64], 10);
 }
 
 TEST(BENCHMARK_VECTOR, METHOD_PUSH_BACK_ASYNC)
@@ -142,7 +148,13 @@ TEST(BENCHMARK_VECTOR, METHOD_PUSH_BACK_ASYNC)
     future_c.wait();
     auto end = omp_get_wtime();
 
-    std::cout << "METHOD_PUSH_BACK_ASYNC " << end - begin << std::endl;
+    std::cout << "BENCHMARK_VECTOR"
+              << ":"
+              << "METHOD_PUSH_BACK_ASYNC"
+              << " " << end - begin << std::endl;
+    ASSERT_EQ(vector_a[1024 * 1024 * 64], 10);
+    ASSERT_EQ(vector_b[1024 * 1024 * 64], 10);
+    ASSERT_EQ(vector_c[1024 * 1024 * 64], 10);
 }
 
 TEST(BENCHMARK_VECTOR, METHOD_RESIZE_SYNC)
@@ -157,7 +169,13 @@ TEST(BENCHMARK_VECTOR, METHOD_RESIZE_SYNC)
     vector_c.resize(1024 * 1024 * 128);
     auto end = omp_get_wtime();
 
-    std::cout << "METHOD_RESIZE_SYNC " << end - begin << std::endl;
+    std::cout << "BENCHMARK_VECTOR"
+              << ":"
+              << "METHOD_RESIZE_SYNC"
+              << " " << end - begin << std::endl;
+    ASSERT_EQ(vector_a.capacity(), 1024 * 1024 * 128);
+    ASSERT_EQ(vector_b.capacity(), 1024 * 1024 * 128);
+    ASSERT_EQ(vector_c.capacity(), 1024 * 1024 * 128);
 }
 
 TEST(BENCHMARK_VECTOR, METHOD_RESIZE_ASYNC)
@@ -175,5 +193,11 @@ TEST(BENCHMARK_VECTOR, METHOD_RESIZE_ASYNC)
     future_c.wait();
     auto end = omp_get_wtime();
 
-    std::cout << "METHOD_RESIZE_ASYNC " << end - begin << std::endl;
+    std::cout << "BENCHMARK_VECTOR"
+              << ":"
+              << "METHOD_RESIZE_ASYNC"
+              << " " << end - begin << std::endl;
+    ASSERT_EQ(vector_a.capacity(), 1024 * 1024 * 128);
+    ASSERT_EQ(vector_b.capacity(), 1024 * 1024 * 128);
+    ASSERT_EQ(vector_c.capacity(), 1024 * 1024 * 128);
 }
