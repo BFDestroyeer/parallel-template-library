@@ -1,3 +1,5 @@
+#include <omp.h>
+
 #include <gtest/gtest.h>
 
 #include "ptl/vector"
@@ -107,4 +109,71 @@ TEST(TEST_VECTOR, METHOD_RESIZE)
     vector_a.resize(10);
 
     ASSERT_EQ(vector_a.capacity(), 10);
+}
+
+// Benchmarks
+TEST(BENCHMARK_VECTOR, METHOD_PUSH_BACK_SYNC)
+{
+    ptl::vector<int32_t> vector_a(1024 * 1024 * 64);
+    ptl::vector<int32_t> vector_b(1024 * 1024 * 64);
+    ptl::vector<int32_t> vector_c(1024 * 1024 * 64);
+
+    auto begin = omp_get_wtime();
+    vector_a.push_back(10);
+    vector_b.push_back(10);
+    vector_c.push_back(10);
+    auto end = omp_get_wtime();
+
+    std::cout << "METHOD_PUSH_BACK_SYNC " << end - begin << std::endl;
+}
+
+TEST(BENCHMARK_VECTOR, METHOD_PUSH_BACK_ASYNC)
+{
+    ptl::vector<int32_t> vector_a(1024 * 1024 * 64);
+    ptl::vector<int32_t> vector_b(1024 * 1024 * 64);
+    ptl::vector<int32_t> vector_c(1024 * 1024 * 64);
+
+    auto begin = omp_get_wtime();
+    auto future_a = vector_a.push_back_async(10);
+    auto future_b = vector_b.push_back_async(10);
+    auto future_c = vector_c.push_back_async(10);
+    future_a.wait();
+    future_b.wait();
+    future_c.wait();
+    auto end = omp_get_wtime();
+
+    std::cout << "METHOD_PUSH_BACK_ASYNC " << end - begin << std::endl;
+}
+
+TEST(BENCHMARK_VECTOR, METHOD_RESIZE_SYNC)
+{
+    ptl::vector<int32_t> vector_a(1024 * 1024 * 64);
+    ptl::vector<int32_t> vector_b(1024 * 1024 * 64);
+    ptl::vector<int32_t> vector_c(1024 * 1024 * 64);
+
+    auto begin = omp_get_wtime();
+    vector_a.resize(1024 * 1024 * 128);
+    vector_b.resize(1024 * 1024 * 128);
+    vector_c.resize(1024 * 1024 * 128);
+    auto end = omp_get_wtime();
+
+    std::cout << "METHOD_RESIZE_SYNC " << end - begin << std::endl;
+}
+
+TEST(BENCHMARK_VECTOR, METHOD_RESIZE_ASYNC)
+{
+    ptl::vector<int32_t> vector_a(1024 * 1024 * 64);
+    ptl::vector<int32_t> vector_b(1024 * 1024 * 64);
+    ptl::vector<int32_t> vector_c(1024 * 1024 * 64);
+
+    auto begin = omp_get_wtime();
+    auto future_a = vector_a.resize_async(1024 * 1024 * 128);
+    auto future_b = vector_b.resize_async(1024 * 1024 * 128);
+    auto future_c = vector_c.resize_async(1024 * 1024 * 128);
+    future_a.wait();
+    future_b.wait();
+    future_c.wait();
+    auto end = omp_get_wtime();
+
+    std::cout << "METHOD_RESIZE_ASYNC " << end - begin << std::endl;
 }

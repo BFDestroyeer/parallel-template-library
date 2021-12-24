@@ -31,7 +31,7 @@ template <typename T, typename Allocator = ptl::allocator<T>> class vector
     constexpr vector(const vector &other)
     {
         this->m_array = Allocator().allocate(other.m_count);
-        ptl::copy(other.m_array, other.m_array + other.m_count, this->m_array);
+        std::copy(other.m_array, other.m_array + other.m_count, this->m_array);
         this->m_count = other.m_count;
         this->m_capacity = other.m_count;
     }
@@ -51,7 +51,7 @@ template <typename T, typename Allocator = ptl::allocator<T>> class vector
             return *this;
         }
         auto temp_data = Allocator().allocate(right.m_count);
-        ptl::copy(right.m_array, right.m_array + right.m_count, temp_data);
+        std::copy(right.m_array, right.m_array + right.m_count, temp_data);
         Allocator().deallocate(this->m_array, this->m_count);
         this->m_array = temp_data;
         this->m_count = right.m_count;
@@ -92,7 +92,7 @@ template <typename T, typename Allocator = ptl::allocator<T>> class vector
         if (this->m_count == this->m_capacity)
         {
             auto temp_data = Allocator().allocate(this->m_capacity + 1);
-            ptl::copy(this->m_array, this->m_array + this->m_count, temp_data);
+            std::copy(this->m_array, this->m_array + this->m_count, temp_data);
             Allocator().deallocate(this->m_array, this->m_count);
             this->m_array = temp_data;
             this->m_capacity++;
@@ -125,7 +125,7 @@ template <typename T, typename Allocator = ptl::allocator<T>> class vector
         else
         {
             auto temp_data = Allocator().allocate(count);
-            ptl::copy(this->m_array, this->m_array + this->m_count, temp_data);
+            std::copy(this->m_array, this->m_array + this->m_count, temp_data);
             Allocator().deallocate(this->m_array, this->m_count);
             this->m_array = temp_data;
             this->m_capacity = count;
@@ -136,11 +136,17 @@ template <typename T, typename Allocator = ptl::allocator<T>> class vector
         }
     }
 
+    std::future<void> resize_async(size_type count)
+    {
+        return std::async(&vector::resize, this, count);
+    }
+
     // Non-member functions
     template <typename T_> friend bool operator==(const ptl::vector<T_> &left, const ptl::vector<T_> &right);
     template <typename T_>
     friend std::strong_ordering operator<=>(const ptl::vector<T_> &left, const ptl::vector<T_> &right);
 };
+
 // Non-member functions
 template <typename T> bool operator==(const ptl::vector<T> &left, const ptl::vector<T> &right)
 {

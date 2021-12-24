@@ -4,7 +4,7 @@ file(GLOB_RECURSE TARGET_HEADERS ${CMAKE_CURRENT_SOURCE_DIR}/include/*)
 
 include_directories("include")
 
-add_library(${TARGET_NAME} STATIC ${TARGET_HEADERS})
+add_library(${TARGET_NAME} STATIC ${TARGET_HEADERS} include/ptl/list)
 
 set_target_properties(${TARGET_NAME} PROPERTIES LINKER_LANGUAGE CXX)
 target_link_libraries(${TARGET_NAME} PUBLIC OpenMP::OpenMP_CXX)
