@@ -1,5 +1,7 @@
 #pragma once
 
+#define BUILD_PARALLEL 1
+
 #include <future>
 
 #include "ptl/allocator"
@@ -75,6 +77,35 @@ template <typename T, typename Allocator = ptl::allocator<T>> class list
     // Modifiers
     void clear() noexcept
     {
+#if BUILD_PARALLEL
+#pragma omp parallel num_threads(2) default(none)
+        {
+            auto thread_number = omp_get_thread_num();
+            if (thread_number == 0)
+            {
+                Node *current_node = this->p_first;
+                for (size_type i = 0; i < this->m_count / 2; i++)
+                {
+                    Node *next_node = current_node->p_next;
+                    delete current_node;
+                    current_node = next_node;
+                }
+            }
+            else
+            {
+                Node *current_node = this->p_last;
+                for (size_type i = 0; i < this->m_count - (this->m_count / 2); i++)
+                {
+                    Node *previous_node = current_node->p_previous;
+                    delete current_node;
+                    current_node = previous_node;
+                }
+            }
+        }
+        this->p_first = nullptr;
+        this->p_last = nullptr;
+        this->m_count = 0;
+#else
         Node *current_node = this->p_first;
         while (current_node != nullptr)
         {
@@ -83,6 +114,7 @@ template <typename T, typename Allocator = ptl::allocator<T>> class list
             current_node = next_node;
         }
         this->m_count = 0;
+#endif
     }
 
     std::future<void> clear_async()
