@@ -1,6 +1,6 @@
 #pragma once
 
-#define BUILD_PARALLEL 1
+#define BUILD_PARALLEL 0
 
 #include <future>
 
@@ -121,7 +121,7 @@ template <typename T, typename Allocator = ptl::allocator<T>> class list
         Node *previous_node = this->p_first;
         for (size_type i = 1; i < count; i++)
         {
-            auto node = new Node();
+            auto node = new Node(i);
             previous_node->p_next = node;
             node->p_previous = previous_node;
             previous_node = node;
@@ -186,6 +186,8 @@ template <typename T, typename Allocator = ptl::allocator<T>> class list
             delete current_node;
             current_node = next_node;
         }
+        this->p_first = nullptr;
+        this->p_last = nullptr;
         this->m_count = 0;
 #endif
     }
