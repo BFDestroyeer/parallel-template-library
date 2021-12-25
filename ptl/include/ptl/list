@@ -131,6 +131,11 @@ template <typename T, typename Allocator = ptl::allocator<T>> class list
 #endif
     }
 
+    constexpr ~list()
+    {
+        this->clear();
+    }
+
     // Capacity
     [[nodiscard]] bool empty() const noexcept
     {
@@ -240,6 +245,18 @@ template <typename T, typename Allocator = ptl::allocator<T>> class list
         }
         this->p_last = current_node;
         return old_count - this->m_count;
+    }
+
+    std::future<size_type> unique_async()
+    {
+        auto unique = static_cast<size_type (list::*)()>(&list::unique);
+        return std::async(unique, this);
+    }
+
+    template <typename BinaryPredicate> std::future<size_type> unique_async(BinaryPredicate predicate)
+    {
+        auto unique = static_cast<size_type (list::*)(BinaryPredicate)>(&list::unique);
+        return std::async(unique, this, predicate);
     }
 };
 } // namespace ptl

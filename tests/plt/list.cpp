@@ -93,3 +93,42 @@ TEST(BENCHMARK_LIST, METHOD_CLEAR_ASYNC)
     ASSERT_TRUE(list_b.empty());
     ASSERT_TRUE(list_c.empty());
 }
+
+TEST(BENCHMARK_LIST, METHOD_UNIQUE)
+{
+    ptl::list<int32_t> list_a(1024 * 1024 * 4);
+    ptl::list<int32_t> list_b(1024 * 1024 * 4);
+    ptl::list<int32_t> list_c(1024 * 1024 * 4);
+
+    auto begin = omp_get_wtime();
+    list_a.unique();
+    list_b.unique();
+    list_c.unique();
+    auto end = omp_get_wtime();
+
+    std::cout << "BENCHMARK_LIST"
+              << ":"
+              << "METHOD_UNIQUE"
+              << " " << end - begin << std::endl;
+}
+
+TEST(BENCHMARK_LIST, METHOD_UNIQUE_ASYNC)
+{
+    ptl::list<int32_t> list_a(1024 * 1024 * 4);
+    ptl::list<int32_t> list_b(1024 * 1024 * 4);
+    ptl::list<int32_t> list_c(1024 * 1024 * 4);
+
+    auto begin = omp_get_wtime();
+    auto future_a = list_a.unique_async();
+    auto future_b = list_b.unique_async();
+    auto future_c = list_c.unique_async();
+    future_a.wait();
+    future_b.wait();
+    future_c.wait();
+    auto end = omp_get_wtime();
+
+    std::cout << "BENCHMARK_LIST"
+              << ":"
+              << "METHOD_UNIQUE_ASYNC"
+              << " " << end - begin << std::endl;
+}
