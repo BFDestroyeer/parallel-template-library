@@ -1,8 +1,9 @@
 #pragma once
 
-#define BUILD_PARALLEL 0
+#define BUILD_PARALLEL 1
 
 #include <future>
+#include <thread>
 
 #include "ptl/allocator"
 
@@ -36,10 +37,14 @@ template <typename T, typename Allocator = ptl::allocator<T>> class list
 
     using size_type = size_t;
 
+    const unsigned c_threads_count = std::thread::hardware_concurrency();
+
     size_type m_count = 0;
 
     Node *p_first = nullptr;
     Node *p_last = nullptr;
+
+    Node **p_local_firsts = new Node *[this->c_threads_count] {};
 
   public:
     explicit list() = default;
@@ -51,32 +56,26 @@ template <typename T, typename Allocator = ptl::allocator<T>> class list
         {
             return;
         }
-        Node **local_first;
-#pragma omp parallel default(none), shared(count, local_first)
+#pragma omp parallel num_threads(this->c_threads_count) default(none), shared(count)
         {
             auto thread_id = omp_get_thread_num();
-            auto threads_count = omp_get_num_threads();
-            if (thread_id == 0)
-            {
-                local_first = new Node *[threads_count];
-            }
 #pragma omp barrier
             size_type local_count;
             if (thread_id != 0)
             {
-                local_count = count / threads_count;
+                local_count = count / this->c_threads_count;
             }
             else
             {
-                local_count = count - (count / threads_count) * (threads_count - 1);
+                local_count = count - (count / this->c_threads_count) * (this->c_threads_count - 1);
             }
-            local_first[thread_id] = nullptr;
+            this->p_local_firsts[thread_id] = nullptr;
 
             Node *previous_node;
             if (local_count != 0)
             {
-                local_first[thread_id] = new Node();
-                previous_node = local_first[thread_id];
+                this->p_local_firsts[thread_id] = new Node();
+                previous_node = this->p_local_firsts[thread_id];
                 for (size_type i = 1; i < local_count; i++)
                 {
                     auto node = new Node(i);
@@ -86,13 +85,13 @@ template <typename T, typename Allocator = ptl::allocator<T>> class list
                 }
                 if (thread_id == 0)
                 {
-                    this->p_first = local_first[thread_id];
+                    this->p_first = this->p_local_firsts[thread_id];
                 }
-                if (thread_id == threads_count - 1)
+                if (thread_id == this->c_threads_count - 1)
                 {
                     this->p_last = previous_node;
                 }
-                if (thread_id == 0 && count / threads_count == 0)
+                if (thread_id == 0 && count / this->c_threads_count == 0)
                 {
                     this->p_last = previous_node;
                 }
@@ -100,17 +99,16 @@ template <typename T, typename Allocator = ptl::allocator<T>> class list
 #pragma omp barrier
             if (local_count != 0)
             {
-                if (thread_id != threads_count - 1)
+                if (thread_id != this->c_threads_count - 1)
                 {
-                    previous_node->p_next = local_first[thread_id + 1];
-                    if (local_first[thread_id + 1] != nullptr)
+                    previous_node->p_next = this->p_local_firsts[thread_id + 1];
+                    if (this->p_local_firsts[thread_id + 1] != nullptr)
                     {
-                        local_first[thread_id + 1]->p_previous = previous_node;
+                        this->p_local_firsts[thread_id + 1]->p_previous = previous_node;
                     }
                 }
             }
         }
-        delete[] local_first;
         this->m_count = count;
 #else
         if (count == 0)
@@ -151,28 +149,24 @@ template <typename T, typename Allocator = ptl::allocator<T>> class list
     void clear() noexcept
     {
 #if BUILD_PARALLEL
-#pragma omp parallel num_threads(2) default(none)
+#pragma omp parallel num_threads(this->c_threads_count) default(none)
         {
-            auto thread_number = omp_get_thread_num();
-            if (thread_number == 0)
+            auto thread_id = omp_get_thread_num();
+            if (this->p_local_firsts[thread_id] != nullptr && thread_id != 0)
             {
-                Node *current_node = this->p_first;
-                for (size_type i = 0; i < this->m_count / 2; i++)
+                this->p_local_firsts[thread_id]->p_previous->p_next = nullptr;
+            }
+#pragma omp barrier
+            if (this->p_local_firsts[thread_id] != nullptr)
+            {
+                Node *current_node = this->p_local_firsts[thread_id];
+                while (current_node != nullptr)
                 {
                     Node *next_node = current_node->p_next;
                     delete current_node;
                     current_node = next_node;
                 }
-            }
-            else
-            {
-                Node *current_node = this->p_last;
-                for (size_type i = 0; i < this->m_count - (this->m_count / 2); i++)
-                {
-                    Node *previous_node = current_node->p_previous;
-                    delete current_node;
-                    current_node = previous_node;
-                }
+                this->p_local_firsts[thread_id] = nullptr;
             }
         }
         this->p_first = nullptr;
