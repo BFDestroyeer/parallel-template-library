@@ -36,6 +36,19 @@ TEST(TEST_LIST, METHOD_UNIQUE)
 }
 
 // Benchmarks
+TEST(BENCHMARK_LIST, CONSTRUCTOR_WITH_SIZE_PARAMETER)
+{
+    auto begin = omp_get_wtime();
+    ptl::list<int32_t> list_a(1024 * 1024 * 4);
+    auto end = omp_get_wtime();
+
+    std::cout << "BENCHMARK_LIST"
+              << ":"
+              << "CONSTRUCTOR_WITH_SIZE_PARAMETER"
+              << " " << end - begin << std::endl;
+    ASSERT_TRUE(list_a.size() == 1024 * 1024 * 4);
+}
+
 TEST(BENCHMARK_LIST, METHOD_CLEAR)
 {
     ptl::list<int32_t> list_a(1024 * 1024 * 4);

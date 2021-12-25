@@ -46,6 +46,66 @@ template <typename T, typename Allocator = ptl::allocator<T>> class list
 
     explicit list(size_type count)
     {
+#if BUILD_PARALLEL
+        if (count == 0)
+        {
+            return;
+        }
+        Node **local_first;
+#pragma omp parallel default(none), shared(count, local_first) num_threads(3)
+        {
+            auto thread_id = omp_get_thread_num();
+            auto threads_count = omp_get_num_threads();
+            if (thread_id == 0)
+            {
+                local_first = new Node *[threads_count];
+            }
+#pragma omp barrier
+            size_type local_count;
+            if (thread_id != 0)
+            {
+                local_count = count / threads_count;
+            }
+            else
+            {
+                local_count = count - (count / threads_count) * (threads_count - 1);
+            }
+            local_first[thread_id] = nullptr;
+
+            if (local_count != 0)
+            {
+                local_first[thread_id] = new Node();
+                Node *previous_node = local_first[thread_id];
+                for (size_type i = 1; i < local_count; i++)
+                {
+                    auto node = new Node(i);
+                    previous_node->p_next = node;
+                    node->p_previous = previous_node;
+                    previous_node = node;
+                }
+                if (thread_id == 0)
+                {
+                    this->p_first = local_first[thread_id];
+                }
+                if (thread_id == threads_count - 1)
+                {
+                    this->p_last = previous_node;
+                }
+                if (thread_id == 0 && count / threads_count == 0)
+                {
+                    this->p_last = previous_node;
+                }
+#pragma omp barrier
+                if (thread_id != threads_count - 1)
+                {
+                    previous_node->p_next = local_first[thread_id + 1];
+                    local_first[thread_id + 1]->p_previous = previous_node;
+                }
+            }
+        }
+        delete[] local_first;
+        this->m_count = count;
+#else
         if (count == 0)
         {
             return;
@@ -61,6 +121,7 @@ template <typename T, typename Allocator = ptl::allocator<T>> class list
         }
         this->p_last = previous_node;
         this->m_count = count;
+#endif
     }
 
     // Capacity
