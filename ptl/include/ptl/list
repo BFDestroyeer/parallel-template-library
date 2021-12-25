@@ -52,7 +52,7 @@ template <typename T, typename Allocator = ptl::allocator<T>> class list
             return;
         }
         Node **local_first;
-#pragma omp parallel default(none), shared(count, local_first) num_threads(3)
+#pragma omp parallel default(none), shared(count, local_first)
         {
             auto thread_id = omp_get_thread_num();
             auto threads_count = omp_get_num_threads();
@@ -72,10 +72,11 @@ template <typename T, typename Allocator = ptl::allocator<T>> class list
             }
             local_first[thread_id] = nullptr;
 
+            Node *previous_node;
             if (local_count != 0)
             {
                 local_first[thread_id] = new Node();
-                Node *previous_node = local_first[thread_id];
+                previous_node = local_first[thread_id];
                 for (size_type i = 1; i < local_count; i++)
                 {
                     auto node = new Node(i);
@@ -95,11 +96,17 @@ template <typename T, typename Allocator = ptl::allocator<T>> class list
                 {
                     this->p_last = previous_node;
                 }
+            }
 #pragma omp barrier
+            if (local_count != 0)
+            {
                 if (thread_id != threads_count - 1)
                 {
                     previous_node->p_next = local_first[thread_id + 1];
-                    local_first[thread_id + 1]->p_previous = previous_node;
+                    if (local_first[thread_id + 1] != nullptr)
+                    {
+                        local_first[thread_id + 1]->p_previous = previous_node;
+                    }
                 }
             }
         }
