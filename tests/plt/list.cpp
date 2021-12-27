@@ -29,6 +29,12 @@ TEST(TEST_LIST, METHOD_CLEAR_ASYNC)
     ASSERT_TRUE(list_a.empty());
 }
 
+TEST(TEST_LIST, METHOD_PUSH_BACK)
+{
+    ptl::list<int32_t> list_a(15);
+    list_a.push_back(10);
+}
+
 TEST(TEST_LIST, METHOD_UNIQUE)
 {
     ptl::list<int32_t> list_a(10);

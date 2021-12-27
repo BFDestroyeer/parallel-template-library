@@ -206,6 +206,31 @@ template <typename T, typename Allocator = ptl::allocator<T>> class list
             this->p_first = node;
             this->p_last = node;
         }
+        // local first movement
+        if (this->m_count < this->c_threads_count)
+        {
+            this->p_local_firsts[this->m_count] = this->p_last;
+        }
+        else
+        {
+            if (this->m_count + 1 % this->c_threads_count != 0)
+            {
+                for (unsigned i = 1; i < this->c_threads_count; i++)
+                {
+                    this->p_local_firsts[i] = this->p_local_firsts[i]->p_next;
+                }
+            }
+            else
+            {
+                for (unsigned i = 1; i < this->c_threads_count; i++)
+                {
+                    for (unsigned j = 0; j < this->c_threads_count - 1 - i; j++)
+                    {
+                        this->p_local_firsts[i] = this->p_local_firsts[i]->p_previous;
+                    }
+                }
+            }
+        }
         this->m_count++;
     }
 
