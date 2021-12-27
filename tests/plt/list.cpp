@@ -14,6 +14,12 @@ TEST(TEST_LIST, CONSTRUCTOR_WITH_SIZE_PARAMETER)
     ASSERT_NO_THROW(ptl::list<int32_t> list_a(10));
 }
 
+TEST(TEST_LIST, CONSTRUCTOR_COPY)
+{
+    ptl::list<int32_t> list_a(33);
+    ASSERT_NO_THROW(ptl::list<int32_t> list_b(list_a));
+}
+
 TEST(TEST_LIST, METHOD_CLEAR)
 {
     ptl::list<int32_t> list_a(10);
@@ -53,6 +59,20 @@ TEST(BENCHMARK_LIST, CONSTRUCTOR_WITH_SIZE_PARAMETER)
               << "CONSTRUCTOR_WITH_SIZE_PARAMETER"
               << " " << end - begin << std::endl;
     ASSERT_TRUE(list_a.size() == 1024 * 1024 * 4);
+}
+
+TEST(BENCHMARK_LIST, CONSTRUCTOR_COPY)
+{
+    ptl::list<int32_t> list_a(1024 * 1024 * 4);
+    auto begin = omp_get_wtime();
+    ptl::list<int32_t> list_b(list_a);
+    auto end = omp_get_wtime();
+
+    std::cout << "BENCHMARK_LIST"
+              << ":"
+              << "CONSTRUCTOR_WITH_COPY"
+              << " " << end - begin << std::endl;
+    ASSERT_TRUE(list_b.size() == 1024 * 1024 * 4);
 }
 
 TEST(BENCHMARK_LIST, METHOD_CLEAR)

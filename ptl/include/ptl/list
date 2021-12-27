@@ -1,8 +1,9 @@
 #pragma once
 
-#define BUILD_PARALLEL 1
+#define BUILD_PARALLEL 0
 
 #include <future>
+#include <stdexcept>
 #include <thread>
 
 #include "ptl/allocator"
@@ -69,7 +70,6 @@ template <typename T, typename Allocator = ptl::allocator<T>> class list
             {
                 local_count = count - (count / this->c_threads_count) * (this->c_threads_count - 1);
             }
-            this->p_local_firsts[thread_id] = nullptr;
 
             Node *previous_node;
             if (local_count != 0)
@@ -78,7 +78,7 @@ template <typename T, typename Allocator = ptl::allocator<T>> class list
                 previous_node = this->p_local_firsts[thread_id];
                 for (size_type i = 1; i < local_count; i++)
                 {
-                    auto node = new Node(i);
+                    auto node = new Node();
                     previous_node->p_next = node;
                     node->p_previous = previous_node;
                     previous_node = node;
@@ -119,7 +119,7 @@ template <typename T, typename Allocator = ptl::allocator<T>> class list
         Node *previous_node = this->p_first;
         for (size_type i = 1; i < count; i++)
         {
-            auto node = new Node(i);
+            auto node = new Node();
             previous_node->p_next = node;
             node->p_previous = previous_node;
             previous_node = node;
@@ -129,9 +129,90 @@ template <typename T, typename Allocator = ptl::allocator<T>> class list
 #endif
     }
 
+    list(list &other)
+    {
+        if (other.m_count == 0)
+        {
+            return;
+        }
+#if BUILD_PARALLEL
+#pragma omp parallel num_threads(this->c_threads_count) default(none), shared(other)
+        {
+            if (this->c_threads_count != other.c_threads_count)
+            {
+                throw std::runtime_error("Thread count error");
+            }
+            auto thread_id = omp_get_thread_num();
+            Node *previous_node;
+            if (other.p_local_firsts[thread_id] != nullptr)
+            {
+                if (thread_id != 0)
+                {
+                    other.p_local_firsts[thread_id]->p_previous->p_next = nullptr;
+                }
+                this->p_local_firsts[thread_id] = new Node(other.p_local_firsts[thread_id]->m_value);
+                previous_node = this->p_local_firsts[thread_id];
+                Node *other_current_node = other.p_local_firsts[thread_id]->p_next;
+                while (other_current_node != nullptr)
+                {
+                    auto node = new Node(other_current_node->m_value);
+                    previous_node->p_next = node;
+                    node->p_previous = previous_node;
+                    previous_node = node;
+                    other_current_node = other_current_node->p_next;
+                }
+                if (thread_id == 0)
+                {
+                    this->p_first = this->p_local_firsts[thread_id];
+                }
+                if (thread_id == this->c_threads_count - 1)
+                {
+                    this->p_last = previous_node;
+                }
+                if (thread_id == 0 && other.m_count / this->c_threads_count == 0)
+                {
+                    this->p_last = previous_node;
+                }
+            }
+#pragma omp barrier
+            if (thread_id != this->c_threads_count - 1)
+            {
+                if (other.p_local_firsts[thread_id] != nullptr)
+                {
+                    if (thread_id != 0)
+                    {
+                        other.p_local_firsts[thread_id]->p_previous = other.p_local_firsts[thread_id];
+                    }
+                    previous_node->p_next = this->p_local_firsts[thread_id + 1];
+                    if (this->p_local_firsts[thread_id + 1] != nullptr)
+                    {
+                        this->p_local_firsts[thread_id + 1]->p_previous = previous_node;
+                    }
+                }
+            }
+        }
+        this->m_count = other.m_count;
+#else
+        this->p_first = new Node(other.p_first->m_value);
+        Node *previous_node = this->p_first;
+        Node *other_current_node = other.p_first->p_next;
+        while (other_current_node != nullptr)
+        {
+            auto node = new Node(other_current_node->m_value);
+            previous_node->p_next = node;
+            node->p_previous = previous_node;
+            previous_node = node;
+            other_current_node = other_current_node->p_next;
+        }
+        this->p_last = previous_node;
+        this->m_count = other.m_count;
+#endif
+    }
+
     constexpr ~list()
     {
         this->clear();
+        delete[] this->p_local_firsts;
     }
 
     // Capacity
@@ -265,6 +346,13 @@ template <typename T, typename Allocator = ptl::allocator<T>> class list
             }
         }
         this->p_last = current_node;
+        // TODO: Should be removed with in parallel version
+        this->p_local_firsts[0] = this->p_first;
+        for (unsigned i = 1; i < this->c_threads_count; i++)
+        {
+            this->p_local_firsts[i] = nullptr;
+        }
+
         return old_count - this->m_count;
     }
 
