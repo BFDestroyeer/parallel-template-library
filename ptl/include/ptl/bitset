@@ -1,0 +1,102 @@
+#pragma once
+
+#include <cstring>
+
+#define WORD_INDEX(INDEX) ((INDEX) >> 5)
+#define BIT_INDEX(INDEX) ((INDEX)&0x0000001f)
+#define READ_BIT(ARRAY, INDEX) (ARRAY[WORD_INDEX(INDEX)] & (0x80000000 >> BIT_INDEX(INDEX)))
+#define SET_BIT(ARRAY, INDEX) (ARRAY[WORD_INDEX(INDEX)] |= (0x80000000 >> BIT_INDEX(INDEX)))
+#define RESET_BIT(ARRAY, INDEX) (ARRAY[WORD_INDEX(INDEX)] &= ~(0x80000000 >> BIT_INDEX(INDEX)))
+
+class bitset
+{
+  private:
+    int m_size;
+    int m_words;
+    int *m_bits;
+
+  public:
+    bitset() : m_size(-1), m_words(-1), m_bits(nullptr)
+    {
+    }
+
+    bitset(const bitset &other) : m_size(other.m_size), m_words(other.m_words), m_bits(new int[m_words])
+    {
+        *this = other;
+    }
+
+    ~bitset()
+    {
+        delete[] m_bits;
+    }
+
+    inline void resize(int size, int flag = 0)
+    {
+        m_size = size;
+        m_words = WORD_INDEX(m_size - 1) + 1;
+        delete[] m_bits;
+        m_bits = new int[m_words];
+
+        std::memset(m_bits, flag, m_words * sizeof(int));
+    }
+
+    inline void operator=(const bitset &other)
+    {
+        std::memcpy(m_bits, other.m_bits, m_words * sizeof(int));
+    }
+
+    inline void operator=(int flag)
+    {
+        std::memset(m_bits, flag, m_words * sizeof(int));
+    }
+
+    inline operator bool() const
+    {
+        for (int i = 0; i < m_words; i++)
+        {
+            if (m_bits[i])
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    inline bool operator&(const bitset &rhs) const
+    {
+        for (int i = 0; i < m_words; i++)
+        {
+            if (m_bits[i] & rhs.m_bits[i])
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    inline void set(int pos = -1)
+    {
+        if (pos >= 0)
+        {
+            SET_BIT(m_bits, pos);
+        }
+        else
+        {
+            std::memset(m_bits, ~0, m_words * sizeof(int));
+        }
+    }
+
+    inline void reset(int pos = -1)
+    {
+        if (pos >= 0)
+        {
+            RESET_BIT(m_bits, pos);
+        }
+        else
+        {
+            std::memset(m_bits, 0, m_words * sizeof(int));
+        }
+    }
+};
