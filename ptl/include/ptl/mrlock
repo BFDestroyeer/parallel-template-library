@@ -12,27 +12,29 @@ namespace ptl
 class mrlock
 {
   protected:
-    static const uint32_t CACHELINE_SIZE = 128;
+    // static const uint32_t CACHELINE_SIZE = 128;
 
     struct cell
     {
         std::atomic<uint32_t> m_sequence;
         bitset m_bits;
-        char m_pad[CACHELINE_SIZE - sizeof(std::atomic<uint32_t>) - sizeof(uint64_t)];
+        // char m_pad[CACHELINE_SIZE - sizeof(std::atomic<uint32_t>) - sizeof(uint64_t)];
     };
 
-    char m_pad0[CACHELINE_SIZE];
+    // char m_pad0[CACHELINE_SIZE];
     cell *m_buffer;
     uint32_t m_buffer_mask;
 
-    char m_pad1[CACHELINE_SIZE - sizeof(cell *) - sizeof(uint32_t)];
+    const uint32_t c_resource_size;
+
+    // char m_pad1[CACHELINE_SIZE - sizeof(cell *) - sizeof(uint32_t)];
     std::atomic<uint32_t> m_head;
 
-    char m_pad[CACHELINE_SIZE - sizeof(std::atomic<uint32_t>)];
+    // char m_pad[CACHELINE_SIZE - sizeof(std::atomic<uint32_t>)];
     std::atomic<uint32_t> m_tail;
 
   public:
-    explicit mrlock(uint32_t resources)
+    explicit mrlock(uint32_t resources) : c_resource_size(resources)
     {
         uint32_t max_threads = std::thread::hardware_concurrency();
         uint32_t buffer_size = 2;
@@ -57,9 +59,17 @@ class mrlock
         m_tail.store(0, std::memory_order_relaxed);
     }
 
-    ~mrlock()
+    constexpr ~mrlock()
     {
         delete[] m_buffer;
+    }
+
+    uint32_t random_access_lock(const size_t index)
+    {
+        bitset resource_mask;
+        resource_mask.resize(this->c_resource_size);
+        resource_mask.set(index);
+        return this->lock(resource_mask);
     }
 
     uint32_t lock(const bitset &resources)

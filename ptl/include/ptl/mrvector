@@ -1,0 +1,216 @@
+#pragma once
+
+#include <execution>
+#include <future>
+#include <memory>
+
+#include "mrlock"
+#include "ptl/allocator"
+
+namespace ptl
+{
+template <typename T, typename Allocator = ptl::allocator<T>> class mrvector
+{
+  protected:
+    using size_type = size_t;
+
+    T *m_array = nullptr;
+    std::atomic<size_type> m_count = 0;
+    size_type m_capacity = 0;
+
+    const size_type c_max_capacity = 256;
+    mutable mrlock m_lock = mrlock(256);
+
+  public:
+    mrvector() = delete;
+
+    constexpr explicit mrvector(size_type count)
+    {
+        this->m_array = Allocator().allocate(count);
+        this->m_count = count;
+        this->m_capacity = count;
+        this->m_capacity = count;
+    }
+
+    constexpr mrvector(size_type count, size_type max_capacity) : c_max_capacity(max_capacity)
+    {
+        this->m_array = Allocator().allocate(count);
+        this->m_count = count;
+        this->m_capacity = count;
+        this->m_capacity = count;
+    }
+
+    constexpr mrvector(const mrvector &other)
+    {
+        this->m_array = Allocator().allocate(other.m_count);
+        std::copy(other.m_array, other.m_array + other.m_count, this->m_array);
+        this->m_count = other.m_count;
+        this->m_capacity = other.m_count;
+    }
+
+    constexpr ~mrvector()
+    {
+        if (this->m_array != nullptr)
+        {
+            Allocator().deallocate(this->m_array, this->m_count);
+        }
+    }
+
+    constexpr mrvector &operator=(const mrvector<T> &right)
+    {
+        if (this == &right)
+        {
+            return *this;
+        }
+        auto temp_data = Allocator().allocate(right.m_count);
+        std::copy(right.m_array, right.m_array + right.m_count, temp_data);
+        Allocator().deallocate(this->m_array, this->m_count);
+        this->m_array = temp_data;
+        this->m_count = right.m_count;
+        this->m_capacity = right.m_count;
+        return *this;
+    }
+    // Element access
+    constexpr T at(size_type index) const
+    {
+        if (index >= this->m_count)
+        {
+            throw std::out_of_range("Index is out of range");
+        }
+        T result;
+        auto handle = this->m_lock.random_access_lock(index);
+        result = this->m_array[index];
+        this->m_lock.unlock(handle);
+        return result;
+    }
+
+    void write(size_type index, T value)
+    {
+        if (index >= this->m_count)
+        {
+            throw std::out_of_range("Index is out of range");
+        }
+        auto handle = this->m_lock.random_access_lock(index);
+        this->m_array[index] = value;
+        this->m_lock.unlock(handle);
+    }
+
+    // Capacity
+    [[nodiscard]] bool empty() const
+    {
+        return this->m_count == 0;
+    }
+
+    [[nodiscard]] size_type size() const
+    {
+        return this->m_count;
+    }
+
+    [[nodiscard]] size_type capacity() const noexcept
+    {
+        return this->m_capacity;
+    }
+
+    // Modifiers
+    constexpr void push_back(const T &value)
+    {
+        if (this->m_count == this->c_max_capacity)
+        {
+            throw std::length_error("Vector reached max capacity");
+        }
+        /*if (this->m_count == this->m_capacity)
+        {
+            auto temp_data = Allocator().allocate(this->m_capacity + 1);
+            std::copy(this->m_array, this->m_array + this->m_count, temp_data);
+            Allocator().deallocate(this->m_array, this->m_count);
+            this->m_array = temp_data;
+            this->m_capacity++;
+        }*/
+        auto handle = this->m_lock.random_access_lock(this->m_count - 1);
+        this->m_array[this->m_count] = value;
+        this->m_lock.unlock(handle);
+        this->m_count++;
+    }
+
+    std::future<void> push_back_async(const T &value)
+    {
+        return std::async(&mrvector::push_back, this, value);
+    }
+
+    constexpr void pop_back()
+    {
+        if (this->m_count == 0) // NOTE: Calling pop_back on an empty container results in undefined behavior.
+        {
+            return;
+        }
+        this->m_count--;
+        auto handle = this->m_lock.random_access_lock(this->m_count - 1);
+        this->m_array[this->m_count - 1].~T();
+        this->m_lock.unlock(handle);
+    }
+    /*
+            constexpr void resize(size_type count)
+            {
+                if (count == this->m_capacity)
+                {
+                    return;
+                }
+                else
+                {
+                    auto temp_data = Allocator().allocate(count);
+                    std::copy(this->m_array, this->m_array + this->m_count, temp_data);
+                    Allocator().deallocate(this->m_array, this->m_count);
+                    this->m_array = temp_data;
+                    this->m_capacity = count;
+                    if (count < this->m_count)
+                    {
+                        this->m_count = count;
+                    }
+                }
+            }
+
+            std::future<void> resize_async(size_type count)
+            {
+                return std::async(&mrvector::resize, this, count);
+            }
+
+            // Non-member functions
+            template <typename T_> friend bool operator==(const ptl::mrvector<T_> &left, const ptl::mrvector<T_>
+       &right); template <typename T_> friend std::strong_ordering operator<=>(const ptl::mrvector<T_> &left, const
+       ptl::mrvector<T_> &right);
+             */
+};
+
+// Non-member functions
+template <typename T> bool operator==(const ptl::mrvector<T> &left, const ptl::mrvector<T> &right)
+{
+    if (left.m_count != right.m_count)
+    {
+        return false;
+    }
+    for (size_t i = 0; i < left.m_count; i++)
+    {
+        if (left[i] != right[i])
+        {
+            return false;
+        }
+    }
+    return true;
+}
+
+template <typename T> std::strong_ordering operator<=>(const ptl::mrvector<T> &left, const ptl::mrvector<T> &right)
+{
+    if (left.m_count < right.m_count)
+    {
+        return std::strong_ordering::less;
+    }
+    else if (left.m_count > right.m_count)
+    {
+        return std::strong_ordering::greater;
+    }
+    else
+    {
+        return std::strong_ordering::equivalent;
+    }
+}
+} // namespace ptl
