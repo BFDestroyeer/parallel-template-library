@@ -1,0 +1,211 @@
+#include "allocator"
+#include "mrlock"
+
+#include <intrin.h> //MSVC ONLY!!!
+#include <mutex>
+
+namespace ptl
+{
+template <typename T, typename Allocator = ptl::allocator<T>> class mrsvector
+{
+  private:
+    using size_type = size_t;
+
+    struct segment
+    {
+      public:
+        T *m_array;
+        mutable mrlock m_lock;
+
+        segment() = delete;
+
+        constexpr explicit segment(size_type count) : m_lock(count)
+        {
+            this->m_array = Allocator().allocate(count);
+        }
+
+        constexpr ~segment()
+        {
+            delete[] this->m_array;
+        }
+    };
+
+    segment **m_segments;
+    std::atomic<size_type> m_count = 0;
+    std::atomic<size_type> m_capacity = 0;
+
+    mutable std::mutex m_resize_lock;
+
+    static size_type segment_index(size_type raw_index)
+    {
+        unsigned long result;
+        auto is_non_zero = _BitScanReverse64(&result, raw_index + 1);
+        return result;
+    }
+
+    static size_type local_index(size_type raw_index)
+    {
+        if (raw_index == 0)
+        {
+            return 0;
+        }
+        auto segment_id = segment_index(raw_index);
+        size_type mask = 1 << segment_id;
+        auto result = raw_index + 1 xor mask;
+        return result;
+    }
+
+  public:
+    constexpr mrsvector() = delete;
+
+    constexpr explicit mrsvector(size_type count)
+    {
+        this->m_segments = new segment *[64]; // Can store more than can be addressed with 64 bit pointer
+
+        size_type index = 0, current_segment_capacity = 1;
+        while (this->m_capacity < count)
+        {
+            this->m_segments[index] = new segment(current_segment_capacity);
+            this->m_capacity += current_segment_capacity;
+            index++;
+            current_segment_capacity = current_segment_capacity << 1;
+        }
+        this->m_count = count;
+    }
+
+    constexpr mrsvector(const mrsvector &other)
+    {
+    }
+
+    ~mrsvector()
+    {
+        size_type segment_count = this->segment_index(this->m_capacity);
+        for (size_type i = 0; i < segment_count; i++)
+        {
+            this->m_segments[i]->~segment();
+        }
+        delete[] this->m_segments;
+    }
+
+    // Element access
+    constexpr T at(size_type index) const
+    {
+        if (index >= this->m_capacity)
+        {
+            throw std::out_of_range("Index is out of range");
+        }
+
+        auto segment_id = this->segment_index(index);
+        auto local_id = this->local_index(index);
+
+        auto handle = this->m_segments[segment_id]->m_lock.random_access_lock(local_id);
+        auto result = this->m_segments[segment_id]->m_array[local_id];
+        this->m_segments[segment_id]->m_lock.unlock(handle);
+        return result;
+    }
+
+    void write(size_type index, T value)
+    {
+        if (index >= this->m_capacity)
+        {
+            throw std::out_of_range("Index is out of range");
+        }
+
+        auto segment_id = this->segment_index(index);
+        auto local_id = this->local_index(index);
+
+        auto handle = this->m_segments[segment_id]->m_lock.random_access_lock(local_id);
+        this->m_segments[segment_id]->m_array[local_id] = value;
+        this->m_segments[segment_id]->m_lock.unlock(handle);
+    }
+
+    // Capacity
+    [[nodiscard]] bool empty() const
+    {
+        return this->m_count == 0;
+    }
+
+    [[nodiscard]] size_type size() const
+    {
+        return this->m_count;
+    }
+
+    [[nodiscard]] size_type capacity() const noexcept
+    {
+        return this->m_capacity;
+    }
+
+    constexpr void resize(size_type count)
+    {
+        this->m_resize_lock.lock();
+        // TODO: MORE LOCKS!!!
+
+        if (this->m_capacity < count) // Increase vector capacity
+        {
+            size_type index = this->segment_index(this->m_capacity);
+            size_type current_segment_capacity = 1 << index;
+            while (this->m_capacity < count)
+            {
+                this->m_segments[index] = new segment(current_segment_capacity);
+                this->m_capacity += current_segment_capacity;
+                index++;
+                current_segment_capacity = current_segment_capacity << 1;
+            }
+        }
+        else // Decrease vector capacity
+        {
+            size_type first = 0;
+            if (count != 0)
+            {
+                first = this->segment_index(count - 1) + 1;
+            }
+            size_type last = this->segment_index(this->m_capacity);
+
+            for (size_type i = first; i < last; i++)
+            {
+                this->m_segments[i]->~segment();
+                this->m_capacity -= 1 << i;
+            }
+        }
+
+        this->m_count = count;
+        this->m_resize_lock.unlock();
+    }
+
+    // Modifiers
+    constexpr void push_back(const T &value)
+    {
+        if (this->m_count == this->m_capacity)
+        {
+            this->resize(this->m_capacity + 1);
+        }
+
+        this->m_resize_lock.lock();
+
+        auto segment_id = this->segment_index(this->m_count - 1);
+        auto local_id = this->local_index(this->m_count - 1);
+
+        auto handle = this->m_segments[segment_id]->m_lock.random_access_lock(local_id);
+        this->m_segments[segment_id]->m_array[local_id] = value;
+        this->m_count++;
+        this->m_segments[segment_id]->m_lock.unlock(handle);
+
+        this->m_resize_lock.unlock();
+    }
+
+    constexpr void pop_back()
+    {
+        this->m_resize_lock.lock();
+
+        auto segment_id = this->segment_index(this->m_count - 1);
+        auto local_id = this->local_index(this->m_count - 1);
+
+        auto handle = this->m_segments[segment_id]->m_lock.random_access_lock(local_id);
+        this->m_segments[segment_id]->m_array[local_id].~T();
+        this->m_count--;
+        this->m_segments[segment_id]->m_lock.unlock(handle);
+
+        this->m_resize_lock.unlock();
+    }
+};
+} // namespace ptl

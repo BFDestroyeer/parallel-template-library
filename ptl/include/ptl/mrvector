@@ -29,14 +29,12 @@ template <typename T, typename Allocator = ptl::allocator<T>> class mrvector
         this->m_array = Allocator().allocate(count);
         this->m_count = count;
         this->m_capacity = count;
-        this->m_capacity = count;
     }
 
     constexpr mrvector(size_type count, size_type max_capacity) : c_max_capacity(max_capacity)
     {
         this->m_array = Allocator().allocate(count);
         this->m_count = count;
-        this->m_capacity = count;
         this->m_capacity = count;
     }
 
@@ -112,7 +110,7 @@ template <typename T, typename Allocator = ptl::allocator<T>> class mrvector
     }
 
     // Modifiers
-    constexpr void push_back(const T &value)
+    constexpr void push_back(const T &value) // TODO: RESIZE LOCK!!!
     {
         if (this->m_count == this->c_max_capacity)
         {
@@ -128,8 +126,8 @@ template <typename T, typename Allocator = ptl::allocator<T>> class mrvector
         }*/
         auto handle = this->m_lock.random_access_lock(this->m_count - 1);
         this->m_array[this->m_count] = value;
-        this->m_lock.unlock(handle);
         this->m_count++;
+        this->m_lock.unlock(handle);
     }
 
     std::future<void> push_back_async(const T &value)
@@ -143,9 +141,9 @@ template <typename T, typename Allocator = ptl::allocator<T>> class mrvector
         {
             return;
         }
-        this->m_count--;
         auto handle = this->m_lock.random_access_lock(this->m_count - 1);
         this->m_array[this->m_count - 1].~T();
+        this->m_count--;
         this->m_lock.unlock(handle);
     }
     /*
