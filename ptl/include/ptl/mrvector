@@ -68,6 +68,7 @@ template <typename T, typename Allocator = ptl::allocator<T>> class mrvector
         this->m_capacity = right.m_count;
         return *this;
     }
+
     // Element access
     constexpr T at(size_type index) const
     {
@@ -110,24 +111,18 @@ template <typename T, typename Allocator = ptl::allocator<T>> class mrvector
     }
 
     // Modifiers
-    constexpr void push_back(const T &value) // TODO: RESIZE LOCK!!!
+    constexpr void push_back(const T &value)
     {
         if (this->m_count == this->c_max_capacity)
         {
             throw std::length_error("Vector reached max capacity");
         }
-        /*if (this->m_count == this->m_capacity)
-        {
-            auto temp_data = Allocator().allocate(this->m_capacity + 1);
-            std::copy(this->m_array, this->m_array + this->m_count, temp_data);
-            Allocator().deallocate(this->m_array, this->m_count);
-            this->m_array = temp_data;
-            this->m_capacity++;
-        }*/
+        auto lastHandle = this->m_lock.last_lock();
         auto handle = this->m_lock.random_access_lock(this->m_count - 1);
         this->m_array[this->m_count] = value;
         this->m_count++;
         this->m_lock.unlock(handle);
+        this->m_lock.unlock(lastHandle);
     }
 
     std::future<void> push_back_async(const T &value)
@@ -141,74 +136,67 @@ template <typename T, typename Allocator = ptl::allocator<T>> class mrvector
         {
             return;
         }
+        auto lastHandle = this->m_lock.last_lock();
         auto handle = this->m_lock.random_access_lock(this->m_count - 1);
         this->m_array[this->m_count - 1].~T();
         this->m_count--;
         this->m_lock.unlock(handle);
+        this->m_lock.unlock(lastHandle);
     }
-    /*
-            constexpr void resize(size_type count)
-            {
-                if (count == this->m_capacity)
-                {
-                    return;
-                }
-                else
-                {
-                    auto temp_data = Allocator().allocate(count);
-                    std::copy(this->m_array, this->m_array + this->m_count, temp_data);
-                    Allocator().deallocate(this->m_array, this->m_count);
-                    this->m_array = temp_data;
-                    this->m_capacity = count;
-                    if (count < this->m_count)
-                    {
-                        this->m_count = count;
-                    }
-                }
-            }
-
-            std::future<void> resize_async(size_type count)
-            {
-                return std::async(&mrvector::resize, this, count);
-            }
-
-            // Non-member functions
-            template <typename T_> friend bool operator==(const ptl::mrvector<T_> &left, const ptl::mrvector<T_>
-       &right); template <typename T_> friend std::strong_ordering operator<=>(const ptl::mrvector<T_> &left, const
-       ptl::mrvector<T_> &right);
-             */
+    // Non-member functions
+    template <typename T_> friend bool operator==(const ptl::mrvector<T_> &left, const ptl::mrvector<T_> &right);
+    template <typename T_>
+    friend std::strong_ordering operator<=>(const ptl::mrvector<T_> &left, const ptl::mrvector<T_> &right);
 };
 
 // Non-member functions
 template <typename T> bool operator==(const ptl::mrvector<T> &left, const ptl::mrvector<T> &right)
 {
+    auto leftLastHandle = left->m_lock.last_lock();
+    auto rightLastHandle = right->m_lock.last_lock();
     if (left.m_count != right.m_count)
     {
+        left.m_lock.unlock(leftLastHandle);
+        right.m_lock.unlock(rightLastHandle);
         return false;
     }
     for (size_t i = 0; i < left.m_count; i++)
     {
+        auto leftHandle = left->m_lock.random_access_lock(i);
+        auto rightHandle = right->m_lock.random_access_lock(i);
         if (left[i] != right[i])
         {
+            left.m_lock.unlock(leftHandle);
+            right.m_lock.unlock(rightHandle);
             return false;
         }
+        left.m_lock.unlock(leftHandle);
+        right.m_lock.unlock(rightHandle);
     }
+    left.m_lock.unlock(leftLastHandle);
+    right.m_lock.unlock(rightLastHandle);
     return true;
 }
 
 template <typename T> std::strong_ordering operator<=>(const ptl::mrvector<T> &left, const ptl::mrvector<T> &right)
 {
+    std::strong_ordering result{};
+    auto leftHandle = left->m_lock.last_lock();
+    auto rightHandle = left->m_lock.last_lock();
     if (left.m_count < right.m_count)
     {
-        return std::strong_ordering::less;
+        result = std::strong_ordering::less;
     }
     else if (left.m_count > right.m_count)
     {
-        return std::strong_ordering::greater;
+        result = std::strong_ordering::greater;
     }
     else
     {
-        return std::strong_ordering::equivalent;
+        result = std::strong_ordering::equivalent;
     }
+    left.m_lock.unlock(leftHandle);
+    right.m_lock.unlock(rightHandle);
+    return result;
 }
 } // namespace ptl

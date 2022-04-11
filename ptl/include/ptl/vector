@@ -4,7 +4,6 @@
 #include <future>
 #include <memory>
 
-#include "ptl/algorithm"
 #include "ptl/allocator"
 
 namespace ptl

@@ -1,0 +1,89 @@
+#pragma once
+
+#include <atomic>
+#include <list>
+
+namespace ptl
+{
+// Michael-Scott Queue
+template <typename T> class msqueue
+{
+  protected:
+    class node_t
+    {
+      public:
+        std::atomic<node_t *> p_next = nullptr;
+        T m_value;
+
+        node_t() = default;
+
+        explicit node_t(const T &value)
+        {
+            this->m_value = value;
+        }
+
+        ~node_t()
+        {
+            m_value.~T();
+        }
+    };
+
+    std::atomic<node_t *> p_first;
+    std::atomic<node_t *> p_last;
+
+  public:
+    explicit msqueue()
+    {
+        this->p_first = new node_t(0);
+        this->p_last = this->p_first.load();
+    }
+
+    void push(const T &value)
+    {
+        auto node = new node_t(value);
+        while (true)
+        {
+            auto last = this->p_last.load();
+            node_t *temp = nullptr;
+            if (last->p_next.compare_exchange_weak(temp, node))
+            {
+                this->p_last.compare_exchange_weak(last, node);
+                return;
+            }
+            else
+            {
+                this->p_last.compare_exchange_weak(last, last->p_next.load());
+            }
+        }
+    }
+
+    T pop()
+    {
+        while (true)
+        {
+            auto first = this->p_first.load();
+            auto firstNext = first->p_next.load();
+            auto last = this->p_last.load();
+            if (first == last)
+            {
+                if (firstNext == nullptr)
+                {
+                    throw std::runtime_error("Container is empty");
+                }
+                else
+                {
+                    this->p_last.compare_exchange_weak(last, firstNext);
+                }
+            }
+            else
+            {
+                auto result = firstNext->m_value;
+                if (this->p_first.compare_exchange_weak(first, firstNext))
+                {
+                    return result;
+                }
+            }
+        }
+    }
+};
+} // namespace ptl

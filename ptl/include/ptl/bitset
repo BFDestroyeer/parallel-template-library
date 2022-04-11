@@ -43,6 +43,8 @@ class bitset
     inline void operator=(const bitset &other)
     {
         std::memcpy(m_bits, other.m_bits, m_words * sizeof(int));
+        m_size = other.m_size;
+        m_words = other.m_words;
     }
 
     inline void operator=(int flag)

@@ -64,14 +64,6 @@ class mrlock
         delete[] m_buffer;
     }
 
-    uint32_t random_access_lock(const size_t index)
-    {
-        bitset resource_mask;
-        resource_mask.resize(this->c_resource_size);
-        resource_mask.set(index);
-        return this->lock(resource_mask);
-    }
-
     uint32_t lock(const bitset &resources)
     {
         cell *cell;
@@ -130,6 +122,38 @@ class mrlock
 
             pos = m_head.load(std::memory_order_relaxed);
         }
+    }
+
+    uint32_t last_lock()
+    {
+        bitset resource_mask;
+        resource_mask.resize(this->c_resource_size);
+        resource_mask.set(this->c_resource_size - 1);
+        return this->lock(resource_mask);
+    }
+
+    uint32_t random_access_lock(const size_t index)
+    {
+        bitset resource_mask;
+        resource_mask.resize(this->c_resource_size);
+        resource_mask.set(index);
+        return this->lock(resource_mask);
+    }
+
+    uint32_t range_lock(const size_t first, const size_t last)
+    {
+        bitset resource_mask;
+        resource_mask.resize(this->c_resource_size);
+        for (size_t i = first; i < last; i++)
+        {
+            resource_mask.set(i);
+        }
+        return this->lock(resource_mask);
+    }
+
+    uint32_t range_lock(const size_t first)
+    {
+        return range_lock(first, this->c_resource_size);
     }
 };
 } // namespace ptl
