@@ -12,13 +12,12 @@ template <typename T> class msqueue
     class node_t
     {
       public:
-        std::atomic<node_t *> p_next = nullptr;
+        std::atomic<std::shared_ptr<node_t>> p_next;
         T m_value;
-
-        node_t() = default;
 
         explicit node_t(const T &value)
         {
+            this->p_next = nullptr;
             this->m_value = value;
         }
 
@@ -28,23 +27,23 @@ template <typename T> class msqueue
         }
     };
 
-    std::atomic<node_t *> p_first;
-    std::atomic<node_t *> p_last;
+    std::atomic<std::shared_ptr<node_t>> p_first;
+    std::atomic<std::shared_ptr<node_t>> p_last;
 
   public:
     explicit msqueue()
     {
-        this->p_first = new node_t(0);
+        this->p_first = std::make_shared<node_t>(0);
         this->p_last = this->p_first.load();
     }
 
     void push(const T &value)
     {
-        auto node = new node_t(value);
+        auto node = std::make_shared<node_t>(value);
         while (true)
         {
             auto last = this->p_last.load();
-            node_t *temp = nullptr;
+            std::shared_ptr<node_t> temp = nullptr;
             if (last->p_next.compare_exchange_weak(temp, node))
             {
                 this->p_last.compare_exchange_weak(last, node);

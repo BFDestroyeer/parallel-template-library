@@ -124,6 +124,17 @@ class mrlock
         }
     }
 
+    uint32_t all_lock()
+    {
+        bitset resource_mask;
+        resource_mask.resize(this->c_resource_size);
+        for (size_t i = 0; i < this->c_resource_size; i++)
+        {
+            resource_mask.set(i);
+        }
+        return this->lock(resource_mask);
+    }
+
     uint32_t last_lock()
     {
         bitset resource_mask;

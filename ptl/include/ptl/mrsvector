@@ -11,26 +11,26 @@ template <typename T, typename Allocator = ptl::allocator<T>> class mrsvector
   private:
     using size_type = size_t;
 
-    struct segment
+    struct segment_t
     {
       public:
         T *m_array;
         mutable mrlock m_lock;
 
-        segment() = delete;
+        segment_t() = delete;
 
-        constexpr explicit segment(size_type count) : m_lock(count)
+        constexpr explicit segment_t(size_type count) : m_lock(count + 1)
         {
             this->m_array = Allocator().allocate(count);
         }
 
-        constexpr ~segment()
+        constexpr ~segment_t()
         {
             delete[] this->m_array;
         }
     };
 
-    segment **m_segments;
+    std::atomic<std::shared_ptr<segment_t>> m_segments[64];
     std::atomic<size_type> m_count = 0;
     std::atomic<size_type> m_capacity = 0;
 
@@ -60,12 +60,12 @@ template <typename T, typename Allocator = ptl::allocator<T>> class mrsvector
 
     constexpr explicit mrsvector(size_type count)
     {
-        this->m_segments = new segment *[64]; // Can store more than can be addressed with 64 bit pointer
+        // this->m_segments = new segment_t *[64]; // Can store more than can be addressed with 64 bit pointer
 
         size_type index = 0, current_segment_capacity = 1;
         while (this->m_capacity < count)
         {
-            this->m_segments[index] = new segment(current_segment_capacity);
+            this->m_segments[index] = std::make_shared<segment_t>(current_segment_capacity);
             this->m_capacity += current_segment_capacity;
             index++;
             current_segment_capacity = current_segment_capacity << 1;
@@ -77,30 +77,29 @@ template <typename T, typename Allocator = ptl::allocator<T>> class mrsvector
     {
     }
 
-    ~mrsvector()
-    {
-        size_type segment_count = this->segment_index(this->m_capacity);
-        for (size_type i = 0; i < segment_count; i++)
-        {
-            this->m_segments[i]->~segment();
-        }
-        delete[] this->m_segments;
-    }
+    ~mrsvector() = default;
 
     // Element access
     constexpr T at(size_type index) const
     {
         if (index >= this->m_capacity)
         {
-            throw std::out_of_range("Index is out of range");
+            throw std::out_of_range("Index is out of range"); // TODO: Remove
         }
 
         auto segment_id = this->segment_index(index);
         auto local_id = this->local_index(index);
 
-        auto handle = this->m_segments[segment_id]->m_lock.random_access_lock(local_id);
-        auto result = this->m_segments[segment_id]->m_array[local_id];
-        this->m_segments[segment_id]->m_lock.unlock(handle);
+        auto segment = this->m_segments[segment_id].load();
+
+        if (segment.get() == nullptr)
+        {
+            throw std::out_of_range("Index is out of range");
+        }
+
+        auto handle = segment->m_lock.random_access_lock(local_id);
+        auto result = segment->m_array[local_id];
+        segment->m_lock.unlock(handle);
         return result;
     }
 
@@ -114,9 +113,10 @@ template <typename T, typename Allocator = ptl::allocator<T>> class mrsvector
         auto segment_id = this->segment_index(index);
         auto local_id = this->local_index(index);
 
-        auto handle = this->m_segments[segment_id]->m_lock.random_access_lock(local_id);
-        this->m_segments[segment_id]->m_array[local_id] = value;
-        this->m_segments[segment_id]->m_lock.unlock(handle);
+        auto segment = this->m_segments[segment_id].load();
+        auto handle = segment->m_lock.random_access_lock(local_id);
+        segment->m_array[local_id] = value;
+        segment->m_lock.unlock(handle);
     }
 
     // Capacity
@@ -138,7 +138,6 @@ template <typename T, typename Allocator = ptl::allocator<T>> class mrsvector
     constexpr void resize(size_type count)
     {
         this->m_resize_lock.lock();
-        // TODO: MORE LOCKS!!!
 
         if (this->m_capacity < count) // Increase vector capacity
         {
@@ -146,7 +145,7 @@ template <typename T, typename Allocator = ptl::allocator<T>> class mrsvector
             size_type current_segment_capacity = 1 << index;
             while (this->m_capacity < count)
             {
-                this->m_segments[index] = new segment(current_segment_capacity);
+                this->m_segments[index] = std::make_shared<segment_t>(current_segment_capacity);
                 this->m_capacity += current_segment_capacity;
                 index++;
                 current_segment_capacity = current_segment_capacity << 1;
@@ -163,8 +162,10 @@ template <typename T, typename Allocator = ptl::allocator<T>> class mrsvector
 
             for (size_type i = first; i < last; i++)
             {
-                this->m_segments[i]->~segment();
+                auto segment = this->m_segments[i].load();
+                segment->m_lock.all_lock();
                 this->m_capacity -= 1 << i;
+                this->m_segments[i] = nullptr;
             }
         }
 
@@ -185,10 +186,11 @@ template <typename T, typename Allocator = ptl::allocator<T>> class mrsvector
         auto segment_id = this->segment_index(this->m_count - 1);
         auto local_id = this->local_index(this->m_count - 1);
 
-        auto handle = this->m_segments[segment_id]->m_lock.random_access_lock(local_id);
-        this->m_segments[segment_id]->m_array[local_id] = value;
+        auto segment = this->m_segments[segment_id].load();
+        auto handle = segment->m_lock.last_lock();
+        segment->m_array[local_id] = value;
         this->m_count++;
-        this->m_segments[segment_id]->m_lock.unlock(handle);
+        segment->m_lock.unlock(handle);
 
         this->m_resize_lock.unlock();
     }
@@ -200,10 +202,11 @@ template <typename T, typename Allocator = ptl::allocator<T>> class mrsvector
         auto segment_id = this->segment_index(this->m_count - 1);
         auto local_id = this->local_index(this->m_count - 1);
 
-        auto handle = this->m_segments[segment_id]->m_lock.random_access_lock(local_id);
-        this->m_segments[segment_id]->m_array[local_id].~T();
+        auto segment = this->m_segments[segment_id].load();
+        auto handle = segment->m_lock.random_access_lock(local_id);
+        segment->m_array[local_id].~T();
         this->m_count--;
-        this->m_segments[segment_id]->m_lock.unlock(handle);
+        segment->m_lock.unlock(handle);
 
         this->m_resize_lock.unlock();
     }
