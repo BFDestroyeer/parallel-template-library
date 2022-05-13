@@ -137,21 +137,25 @@ template <typename T, typename Allocator = ptl::allocator<T>> class mrsvector
 
     constexpr void resize(size_type count)
     {
-        this->m_resize_lock.lock();
-
+        // this->m_resize_lock.lock();
         if (this->m_capacity < count) // Increase vector capacity
         {
-            size_type index = this->segment_index(this->m_capacity);
-            size_type current_segment_capacity = 1 << index;
-            while (this->m_capacity < count)
+            size_type segmentIndex = this->segment_index(this->m_capacity.load());
+            size_type targetSegmentIndex = this->segment_index(count - 1) + 1;
+            size_type current_segment_capacity = 1 << segmentIndex;
+            std::shared_ptr<segment_t> temp = nullptr;
+            while (segmentIndex < targetSegmentIndex)
             {
-                this->m_segments[index] = std::make_shared<segment_t>(current_segment_capacity);
-                this->m_capacity += current_segment_capacity;
-                index++;
+                if (this->m_segments[segmentIndex].compare_exchange_weak(
+                        temp, std::make_shared<segment_t>(current_segment_capacity)))
+                {
+                    this->m_capacity += current_segment_capacity;
+                }
+                segmentIndex++;
                 current_segment_capacity = current_segment_capacity << 1;
             }
         }
-        else // Decrease vector capacity
+        /*else // Decrease vector capacity
         {
             size_type first = 0;
             if (count != 0)
@@ -167,10 +171,9 @@ template <typename T, typename Allocator = ptl::allocator<T>> class mrsvector
                 this->m_capacity -= 1 << i;
                 this->m_segments[i] = nullptr;
             }
-        }
+        }*/
 
-        this->m_count = count;
-        this->m_resize_lock.unlock();
+        // this->m_resize_lock.unlock();
     }
 
     // Modifiers
