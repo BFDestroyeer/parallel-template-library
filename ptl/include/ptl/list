@@ -1,6 +1,6 @@
 #pragma once
 
-#define BUILD_PARALLEL 0
+#define BUILD_PARALLEL 1
 
 #include <future>
 #include <stdexcept>
@@ -290,7 +290,18 @@ template <typename T, typename Allocator = ptl::allocator<T>> class list
         // local first movement
         if (this->m_count < this->c_threads_count)
         {
-            this->p_local_firsts[this->m_count] = this->p_last;
+        }
+        else if (this->m_count == this->c_threads_count)
+        {
+            for (unsigned i = 1; i < this->c_threads_count; i++)
+            {
+                this->p_local_firsts[i] = this->p_first;
+                for (size_t j = 0; j < i; j++)
+                {
+                    this->p_local_firsts[i] = this->p_local_firsts[i]->p_next;
+                }
+            }
+
         }
         else
         {
