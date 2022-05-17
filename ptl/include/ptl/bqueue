@@ -8,6 +8,8 @@ namespace ptl
 template <typename T>
 class bqueue
 {
+    const size_t MAX_HOPS = 3;
+
   protected:
     class pointer_t;
 
@@ -59,6 +61,20 @@ class bqueue
     std::atomic<pointer_t> p_first;
     std::atomic<pointer_t> p_last;
 
+  private:
+    void free_chain(pointer_t first, pointer_t new_first)
+    {
+        if (this->p_first.compare_exchange_weak(first, pointer_t(new_first.p_node, 0 , first.m_tag + 1)))
+        {
+            while (first.p_node != new_first.p_node)
+            {
+                auto next = first.p_node->p_next.load();
+                // reclaim_node(first.p_node)
+                first = next;
+            }
+        }
+    }
+
   public:
     bqueue()
     {
@@ -87,7 +103,7 @@ class bqueue
                     next = last.p_node->p_next.load();
                     while((next.m_tag == last.m_tag + 1) && !(next.m_deleted))
                     {
-                        //Back-off
+                        // Back-off
                         node->p_next = next;
                         if (last.p_node->p_next.compare_exchange_weak(next, pointer_t(node, false, last.m_tag + 1)))
                         {
@@ -101,6 +117,61 @@ class bqueue
                     while((next.p_node->p_next.load().p_node != nullptr) && (this->p_last == last))
                     {
                         next = next.p_node->p_next;
+                    }
+                }
+            }
+        }
+    }
+
+    T pop()
+    {
+        while (true)
+        {
+            auto first = this->p_first.load();
+            auto last = this->p_last.load();
+            auto next = first.p_node->p_next.load();
+            if (first == this->p_first.load())
+            {
+                if (first.p_node == last.p_node)
+                {
+                    if (next.p_node == nullptr)
+                    {
+                        throw std::runtime_error("Container is empty");
+                    }
+                    while ((next.p_node->p_next.load().p_node != nullptr) && (this->p_last == last))
+                    {
+                        next = next.p_node->p_next.load();
+                    }
+                }
+                else
+                {
+                    auto iterator = first;
+                    size_t hops = 0;
+                    while ((next.m_deleted && iterator.p_node != last.p_node) && (this->p_first.load() == first))
+                    {
+                        iterator = next;
+                        next = iterator.p_node->p_next;
+                        hops++;
+                    }
+                    if (this->p_first.load() != first){
+                        continue;
+                    }
+                    else if (iterator.p_node == last.p_node)
+                    {
+                        this->free_chain(first, iterator);
+                    }
+                    else
+                    {
+                        auto value = next.p_node->m_value;
+                        if (iterator.p_node->p_next.compare_exchange_weak(next, pointer_t(next.p_node, true, next.m_tag + 1)))
+                        {
+                            if (hops >= MAX_HOPS)
+                            {
+                                this->free_chain(first, next);
+                            }
+                            return value;
+                        }
+                        // Back-off
                     }
                 }
             }
