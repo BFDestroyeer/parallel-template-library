@@ -62,14 +62,14 @@ class bqueue
     std::atomic<pointer_t> p_last;
 
   private:
-    void free_chain(pointer_t first, pointer_t new_first)
+    void free_chain(pointer_t& first, pointer_t& new_first)
     {
         if (this->p_first.compare_exchange_weak(first, pointer_t(new_first.p_node, 0 , first.m_tag + 1)))
         {
             while (first.p_node != new_first.p_node)
             {
                 auto next = first.p_node->p_next.load();
-                // reclaim_node(first.p_node)
+                delete first.p_node; // reclaim node
                 first = next;
             }
         }
