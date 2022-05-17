@@ -1,0 +1,110 @@
+#pragma once
+
+#include <atomic>
+#include <memory>
+
+namespace ptl
+{
+template <typename T>
+class bqueue
+{
+  protected:
+    class pointer_t;
+
+    class node_t
+    {
+      public:
+        std::atomic<pointer_t> p_next;
+        T m_value;
+
+        explicit node_t(const T &value)
+        {
+            this->m_value = value;
+        }
+
+        ~node_t()
+        {
+            m_value.~T();
+        }
+    };
+
+    class pointer_t
+    {
+      public:
+        node_t* p_node;
+        bool m_deleted;
+        unsigned m_tag;
+
+        pointer_t() {
+            this->p_node = nullptr;
+            this->m_deleted = false;
+            this->m_tag = 0;
+        }
+
+        explicit pointer_t(node_t* node, bool deleted = false, unsigned tag = 0) {
+            this->p_node = node;
+            this->m_deleted = deleted;
+            this->m_tag = tag;
+        }
+
+        explicit pointer_t(const T &value, bool deleted = false, unsigned tag = 0) {
+            this->p_node = new node_t(value);
+            this->m_deleted = deleted;
+            this->m_tag = tag;
+        }
+
+        bool operator==(const pointer_t&) const = default;
+    };
+
+    std::atomic<pointer_t> p_first;
+    std::atomic<pointer_t> p_last;
+
+  public:
+    bqueue()
+    {
+        auto node = new node_t(0);
+        this->p_first = pointer_t(node);
+        this->p_last = pointer_t(node);
+    }
+
+    void push(const T &value)
+    {
+        auto node = new node_t(value);
+        while (true)
+        {
+            auto last = this->p_last.load();
+            auto next = last.p_node->p_next.load();
+            if (last == this->p_last.load())
+            {
+                if (next.p_node == nullptr)
+                {
+                    node->p_next = pointer_t(nullptr, false, last.m_tag + 2);
+                    if (last.p_node->p_next.compare_exchange_weak(next, pointer_t(node, false, last.m_tag + 1)))
+                    {
+                        this->p_last.compare_exchange_weak(last, pointer_t(node, false, last.m_tag + 1));
+                        return;
+                    }
+                    next = last.p_node->p_next.load();
+                    while((next.m_tag == last.m_tag + 1) && !(next.m_deleted))
+                    {
+                        //Back-off
+                        node->p_next = next;
+                        if (last.p_node->p_next.compare_exchange_weak(next, pointer_t(node, false, last.m_tag + 1)))
+                        {
+                            return;
+                        }
+                        next = last.p_node->p_next;
+                    }
+                }
+                else
+                {
+                    while((next.p_node->p_next.load().p_node != nullptr) && (this->p_last == last))
+                    {
+                        next = next.p_node->p_next;
+                    }
+                }
+            }
+        }
+    }
+};
+}
