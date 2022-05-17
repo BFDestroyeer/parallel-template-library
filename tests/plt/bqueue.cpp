@@ -13,3 +13,10 @@ TEST(TEST_BQUEUE, METHOD_PUSH)
     queue.push(10);
     return;
 }
+
+TEST(TEST_BQUEUE, METHOD_POP)
+{
+    ptl::bqueue<int32_t> queue;
+    queue.push(10);
+    ASSERT_EQ(queue.pop(), 10);
+}
