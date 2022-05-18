@@ -17,7 +17,7 @@ template <typename T> class msqueue
 
         explicit node_t(const T &value)
         {
-            this->p_next = nullptr;
+            this->p_next.store(nullptr);
             this->m_value = value;
         }
 
@@ -35,6 +35,18 @@ template <typename T> class msqueue
     {
         this->p_first = std::make_shared<node_t>(0);
         this->p_last = this->p_first.load();
+    }
+
+    ~msqueue()
+    {
+        auto iterator = p_first.load();
+        auto next = iterator->p_next.load();
+        while (next != nullptr)
+        {
+            iterator->p_next.store(nullptr);
+            iterator = next;
+            next = next->p_next.load();
+        }
     }
 
     void push(const T &value)
