@@ -1,5 +1,6 @@
 #pragma once
 
+#include "epochguard"
 #include <atomic>
 #include <memory>
 
@@ -61,35 +62,46 @@ class bqueue
     std::atomic<pointer_t> p_first;
     std::atomic<pointer_t> p_last;
 
+    ptl::epoch_guard<node_t> m_guard;
+
   private:
-    void free_chain(pointer_t& first, pointer_t& new_first)
+    void free_chain(pointer_t& first, pointer_t& new_first, size_t thread_id)
     {
-        if (this->p_first.compare_exchange_weak(first, pointer_t(new_first.p_node, 0 , first.m_tag + 1)))
+        if (this->p_first.compare_exchange_weak(first, pointer_t(new_first.p_node, false , first.m_tag + 1)))
         {
             while (first.p_node != new_first.p_node)
             {
                 auto next = first.p_node->p_next.load();
-                delete first.p_node; // reclaim node
+                this->m_guard.add_to_delete_list(first.p_node, thread_id);
                 first = next;
             }
         }
     }
 
   public:
-    bqueue()
+    bqueue(size_t thread_count) : m_guard(thread_count)
     {
         auto node = new node_t(0);
         this->p_first = pointer_t(node);
         this->p_last = pointer_t(node);
     }
 
-    void push(const T &value)
+    ~bqueue()
     {
+        /*if (this->p_first.load() != this->p_last.load())
+        {
+            free_chain(this->p_first.load(), this->p_last.load());
+        }*/
+    }
+
+    void push(const T &value, size_t thread_id = 0)
+    {
+        this->m_guard.enter(thread_id);
         auto node = new node_t(value);
         while (true)
         {
-            auto last = this->p_last.load();
-            auto next = last.p_node->p_next.load();
+            auto last = this->p_last.load(std::memory_order_consume);
+            auto next = last.p_node->p_next.load(std::memory_order_consume);
             if (last == this->p_last.load())
             {
                 if (next.p_node == nullptr)
@@ -98,15 +110,17 @@ class bqueue
                     if (last.p_node->p_next.compare_exchange_weak(next, pointer_t(node, false, last.m_tag + 1)))
                     {
                         this->p_last.compare_exchange_weak(last, pointer_t(node, false, last.m_tag + 1));
+                        this->m_guard.exit(thread_id);
                         return;
                     }
-                    next = last.p_node->p_next.load();
+                    next = last.p_node->p_next.load(std::memory_order_consume);
                     while((next.m_tag == last.m_tag + 1) && !(next.m_deleted))
                     {
                         // Back-off
                         node->p_next = next;
                         if (last.p_node->p_next.compare_exchange_weak(next, pointer_t(node, false, last.m_tag + 1)))
                         {
+                            this->m_guard.exit(thread_id);
                             return;
                         }
                         next = last.p_node->p_next;
@@ -114,7 +128,7 @@ class bqueue
                 }
                 else
                 {
-                    while((next.p_node->p_next.load().p_node != nullptr) && (this->p_last == last))
+                    while((next.p_node->p_next.load(std::memory_order_consume).p_node != nullptr) && (this->p_last == last))
                     {
                         next = next.p_node->p_next;
                     }
@@ -123,8 +137,9 @@ class bqueue
         }
     }
 
-    T pop()
+    T pop(size_t thread_id = 0)
     {
+        this->m_guard.enter(thread_id);
         while (true)
         {
             auto first = this->p_first.load();
@@ -136,6 +151,7 @@ class bqueue
                 {
                     if (next.p_node == nullptr)
                     {
+                        this->m_guard.exit(thread_id);
                         throw std::runtime_error("Container is empty");
                     }
                     while ((next.p_node->p_next.load().p_node != nullptr) && (this->p_last == last))
@@ -158,7 +174,7 @@ class bqueue
                     }
                     else if (iterator.p_node == last.p_node)
                     {
-                        this->free_chain(first, iterator);
+                        this->free_chain(first, iterator, thread_id);
                     }
                     else
                     {
@@ -167,8 +183,9 @@ class bqueue
                         {
                             if (hops >= MAX_HOPS)
                             {
-                                this->free_chain(first, next);
+                                this->free_chain(first, next, thread_id);
                             }
+                            this->m_guard.exit(thread_id);
                             return value;
                         }
                         // Back-off

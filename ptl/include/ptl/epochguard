@@ -1,0 +1,84 @@
+#pragma once
+
+#include <atomic>
+#include <list>
+#include <set>
+
+namespace ptl
+{
+template <typename T>
+class epoch_guard
+{
+    std::atomic<size_t> m_global_epoch;
+
+    size_t *m_local_epochs;
+    const size_t c_epochs_count = 10;
+
+    const size_t c_thread_count;
+
+    std::list<T*>	**m_delete_list ;
+
+  public:
+    explicit epoch_guard(size_t thread_count) : c_thread_count(thread_count)
+    {
+        this->m_global_epoch.store(0);
+        this->m_local_epochs = new size_t[thread_count]{};
+        this->m_delete_list = new std::list<T*>*[thread_count];
+        for (size_t i = 0; i < thread_count; i++)
+        {
+            this->m_delete_list[i] = new std::list<T*>[c_epochs_count];
+        }
+    }
+
+    ~epoch_guard()
+    {
+        delete[] this->m_local_epochs;
+    }
+
+    void enter(size_t thread_id)
+    {
+        if (m_global_epoch >= this->m_local_epochs[thread_id])
+        {
+            this->m_local_epochs[thread_id] = this->m_global_epoch + 1;
+        }
+    }
+
+    void exit(size_t thread_id)
+    {
+        bool is_end_of_epoch = true;
+        auto global_epoch = this->m_global_epoch.load();
+        for (size_t i = 0; i < c_thread_count; i++)
+        {
+            if (this->m_local_epochs[i] <= global_epoch)
+            {
+                is_end_of_epoch = false;
+            }
+        }
+        if(is_end_of_epoch)
+        {
+            if (this->m_global_epoch.compare_exchange_weak(global_epoch, global_epoch + 1))
+            {
+                std::set<T*> pointers;
+                for (size_t i = 0; i < c_thread_count; i++)
+                {
+                    for (auto pointer : m_delete_list[i][(global_epoch - 1) % this->c_epochs_count])
+                    {
+                        pointers.insert(pointer);
+                    }
+                    m_delete_list[i][(global_epoch - 1) % this->c_epochs_count].clear();
+                }
+                for (auto pointer : pointers)
+                {
+                    delete pointer;
+                }
+            }
+        }
+    }
+
+    void add_to_delete_list(T* pointer, size_t thread_id)
+    {
+        this->m_delete_list[thread_id];
+        this->m_delete_list[thread_id][this->m_local_epochs[thread_id] % this->c_epochs_count].push_back(pointer);
+    }
+};
+}
