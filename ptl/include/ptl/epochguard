@@ -12,7 +12,7 @@ class epoch_guard
     std::atomic<size_t> m_global_epoch;
 
     size_t *m_local_epochs;
-    const size_t c_epochs_count = 10;
+    const size_t c_epochs_count = 3;
 
     const size_t c_thread_count;
 

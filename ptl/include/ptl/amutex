@@ -1,0 +1,29 @@
+#pragma once
+
+#include <atomic>
+
+namespace ptl
+{
+class amutex
+{
+    std::atomic<bool> m_lock = false;
+
+  public:
+    void lock()
+    {
+        bool temp = false;
+        while (true)
+        {
+            if (this->m_lock.compare_exchange_weak(temp, true))
+            {
+                break;
+            }
+        }
+    }
+
+    void unlock()
+    {
+        this->m_lock.store(false);
+    }
+};
+}

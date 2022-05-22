@@ -18,22 +18,22 @@ template <typename T, typename Allocator = ptl::allocator<T>> class mrvector
     std::atomic<size_type> m_count = 0;
     size_type m_capacity = 0;
 
-    const size_type c_max_capacity = 256;
-    mutable mrlock m_lock = mrlock(256);
+    const size_type c_max_capacity;
+    mutable mrlock m_lock;
 
   public:
     mrvector() = delete;
 
-    constexpr explicit mrvector(size_type count)
+    constexpr explicit mrvector(size_type count) : c_max_capacity(count), m_lock(count + 1)
     {
         this->m_array = Allocator().allocate(count);
         this->m_count = count;
         this->m_capacity = count;
     }
 
-    constexpr mrvector(size_type count, size_type max_capacity) : c_max_capacity(max_capacity)
+    constexpr mrvector(size_type count, size_type max_capacity) : c_max_capacity(max_capacity), m_lock(max_capacity + 1)
     {
-        this->m_array = Allocator().allocate(count);
+        this->m_array = Allocator().allocate(c_max_capacity);
         this->m_count = count;
         this->m_capacity = count;
     }
@@ -118,7 +118,7 @@ template <typename T, typename Allocator = ptl::allocator<T>> class mrvector
             throw std::length_error("Vector reached max capacity");
         }
         auto lastHandle = this->m_lock.last_lock();
-        auto handle = this->m_lock.random_access_lock(this->m_count - 1);
+        auto handle = this->m_lock.random_access_lock(this->m_count);
         this->m_array[this->m_count] = value;
         this->m_count++;
         this->m_lock.unlock(handle);
